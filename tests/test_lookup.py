@@ -73,6 +73,10 @@ def test_matcher_handles_exact_normalized_and_thresholded_fuzzy() -> None:
             "Alpha Wave Global",
             "Andreessen Horowitz",
             "Monk's Hill Ventures",
+            "Greylock Partners",
+            "PremjiInvest",
+            "Founders Fund",
+            "Advanced Technology Ventures",
         ]
     )
 
@@ -86,6 +90,20 @@ def test_matcher_handles_exact_normalized_and_thresholded_fuzzy() -> None:
     assert fuzzy.matches
     assert all(item.match_method == "fuzzy" for item in fuzzy.matches)
     assert all(item.match_score >= 70 for item in fuzzy.matches)
+
+    good_fuzzy = matcher.match(company="Anthropic", raw_investor="Greylock")
+    assert [item.matched_fund_manager for item in good_fuzzy.matches] == ["Greylock Partners"]
+
+    compact_fuzzy = matcher.match(company="Anthropic", raw_investor="Premji Invest")
+    assert [item.matched_fund_manager for item in compact_fuzzy.matches] == ["PremjiInvest"]
+
+    bad_suffix_fuzzy = matcher.match(company="Anthropic", raw_investor="Ballistic Ventures")
+    assert bad_suffix_fuzzy.matches == ()
+    assert bad_suffix_fuzzy.best_candidate is not None
+
+    bad_fund_fuzzy = matcher.match(company="Anthropic", raw_investor="CrowdStrike Falcon Fund")
+    assert bad_fund_fuzzy.matches == ()
+    assert bad_fund_fuzzy.best_candidate is not None
 
     unmatched = matcher.match(company="Anthropic", raw_investor="Totally Different Investor")
     assert unmatched.matches == ()

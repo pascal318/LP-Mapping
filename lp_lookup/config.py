@@ -1,7 +1,10 @@
 from pathlib import Path
 
-LP_DATABASE_PATH = Path("/Users/pascalsuhrcke/Downloads/Atrea_LP_Database_Export.xlsx")
-COMPANY_LOOKUP_PATH = Path("/Users/pascalsuhrcke/Downloads/Company Look-Up.xlsx")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
+
+LP_DATABASE_PATH = DATA_DIR / "Atrea_LP_Database_Export.xlsx"
+COMPANY_LOOKUP_PATH = DATA_DIR / "Company Look-Up.xlsx"
 
 LP_FUND_PAIR_SHEET = "All LP-Fund Pairs"
 UNIQUE_LPS_SHEET = "Unique LPs"

@@ -11,6 +11,57 @@ from rapidfuzz import fuzz, process
 from .config import FUZZY_SCORE_FLOOR, FUZZY_SCORE_MARGIN
 from .models import InvestorMatch
 
+GENERIC_TOKENS = {
+    "advisors",
+    "advisor",
+    "asset",
+    "assets",
+    "associates",
+    "bank",
+    "banks",
+    "capital",
+    "co",
+    "collective",
+    "companies",
+    "company",
+    "corporate",
+    "equity",
+    "finance",
+    "financial",
+    "fund",
+    "funds",
+    "global",
+    "group",
+    "growth",
+    "holding",
+    "holdings",
+    "industry",
+    "international",
+    "invest",
+    "investment",
+    "investments",
+    "investisseur",
+    "investissement",
+    "investor",
+    "investors",
+    "management",
+    "of",
+    "partner",
+    "partners",
+    "private",
+    "public",
+    "strategic",
+    "street",
+    "technologies",
+    "technology",
+    "the",
+    "venture",
+    "ventures",
+    "vision",
+    "and",
+}
+GENERIC_SUFFIXES = tuple(sorted(GENERIC_TOKENS, key=len, reverse=True))
+
 
 def normalize_name(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value or "")
@@ -22,6 +73,48 @@ def normalize_name(value: str) -> str:
     normalized = re.sub(r"[^a-z0-9]+", " ", normalized)
     normalized = re.sub(r"\s+", " ", normalized).strip()
     return normalized
+
+
+def core_tokens(value: str) -> tuple[str, ...]:
+    tokens: list[str] = []
+    for token in normalize_name(value).split():
+        if token in GENERIC_TOKENS:
+            continue
+
+        stripped = token
+        for suffix in GENERIC_SUFFIXES:
+            if stripped.endswith(suffix) and len(stripped) > len(suffix) + 2:
+                stripped = stripped[: -len(suffix)]
+                break
+
+        if stripped and stripped not in GENERIC_TOKENS and len(stripped) >= 2:
+            tokens.append(stripped)
+    return tuple(tokens)
+
+
+def structurally_compatible(left: str, right: str) -> bool:
+    left_tokens = core_tokens(left)
+    right_tokens = core_tokens(right)
+    if not left_tokens or not right_tokens:
+        return False
+
+    if left_tokens == right_tokens:
+        return True
+
+    overlap = set(left_tokens) & set(right_tokens)
+    if len(overlap) >= 2:
+        return True
+
+    if len(overlap) != 1:
+        return False
+
+    token = next(iter(overlap))
+    return (
+        len(token) >= 4
+        and left_tokens[0] == token
+        and right_tokens[0] == token
+        and (len(left_tokens) == 1 or len(right_tokens) == 1)
+    )
 
 
 @dataclass(frozen=True)
@@ -111,13 +204,16 @@ class InvestorMatcher:
         accepted_choices = [
             choice
             for choice, score, _index in scored_choices
-            if int(round(score)) >= self.fuzzy_score_floor and int(round(score)) >= best_score - self.fuzzy_score_margin
+            if int(round(score)) >= self.fuzzy_score_floor
+            and int(round(score)) >= best_score - self.fuzzy_score_margin
         ]
 
         matches: list[InvestorMatch] = []
         for choice in accepted_choices:
             score = int(round(next(score for candidate, score, _index in scored_choices if candidate == choice)))
             for manager in self._normalized_to_managers[choice]:
+                if not structurally_compatible(investor, manager):
+                    continue
                 matches.append(
                     InvestorMatch(
                         company=company,
@@ -129,8 +225,9 @@ class InvestorMatcher:
                 )
 
         matches.sort(key=lambda item: (-item.match_score, item.matched_fund_manager))
+        best_candidate = self._normalized_to_managers[scored_choices[0][0]][0]
         return MatchResult(
             matches=tuple(matches),
-            best_candidate=matches[0].matched_fund_manager if matches else None,
+            best_candidate=matches[0].matched_fund_manager if matches else best_candidate,
             best_score=best_score,
         )
