@@ -1,8 +1,20 @@
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
+from .adapters import ExcelSourceAdapter
+from .config import COMPANY_LOOKUP_PATH, LP_DATABASE_PATH
 from .service import LookupService
+
+
+def _build_service_from_uploads(lp_upload, company_upload) -> LookupService:
+    temp_dir = Path(tempfile.mkdtemp(prefix="lp_lookup_"))
+    lp_path = temp_dir / "Atrea_LP_Database_Export.xlsx"
+    company_path = temp_dir / "Company Look-Up.xlsx"
+    lp_path.write_bytes(lp_upload.getvalue())
+    company_path.write_bytes(company_upload.getvalue())
+    return LookupService(ExcelSourceAdapter(lp_database_path=lp_path, company_lookup_path=company_path))
 
 
 def main() -> None:
@@ -18,8 +30,21 @@ def main() -> None:
     st.title("LP Look-Through Lookup")
     st.caption("Map company investors to fund managers, then surface LP look-through exposure.")
 
+    local_files_available = LP_DATABASE_PATH.exists() and COMPANY_LOOKUP_PATH.exists()
+    source_mode = "Local files" if local_files_available else "Uploaded files"
+    if local_files_available:
+        source_mode = st.radio("Data source", ["Local files", "Uploaded files"], horizontal=True)
+
     try:
-        service = LookupService()
+        if source_mode == "Local files":
+            service = LookupService()
+        else:
+            st.info("Upload both Excel files to build a lookup session in the deployed app.")
+            lp_upload = st.file_uploader("LP database export", type=["xlsx"], key="lp_upload")
+            company_upload = st.file_uploader("Company lookup workbook", type=["xlsx"], key="company_upload")
+            if not (lp_upload and company_upload):
+                return
+            service = _build_service_from_uploads(lp_upload, company_upload)
     except FileNotFoundError as exc:
         st.error(str(exc))
         return
@@ -28,10 +53,13 @@ def main() -> None:
         return
 
     with st.expander("Source Files", expanded=False):
-        for path in service.source_paths:
-            exists = Path(path).exists()
-            label = "Available" if exists else "Missing"
-            st.write(f"- {label}: `{path}`")
+        if source_mode == "Local files":
+            for path in service.source_paths:
+                exists = Path(path).exists()
+                label = "Available" if exists else "Missing"
+                st.write(f"- {label}: `{path}`")
+        else:
+            st.write("- Uploaded workbook session")
 
     companies = service.list_companies()
     if not companies:

@@ -27,6 +27,8 @@ pytest
 
 ## Notes
 
-- The app uses fixed source paths for v1, but the parser layer is adapter-based so more sources can be added later.
+- On your local machine, the app can read the fixed files in `Downloads`.
+- In deployed environments such as Railway, upload both workbooks in the UI to build a lookup session.
+- The parser layer is adapter-based so more sources can be added later.
 - Investor matching uses exact, normalized exact, and fuzzy matching (`rapidfuzz.WRatio`) with a minimum score of `70`.
 - Results show deduped LPs and keep unmatched investors visible for each company.
