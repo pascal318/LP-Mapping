@@ -6,6 +6,7 @@ import pytest
 from openpyxl import Workbook
 
 from lp_lookup.adapters import ExcelSourceAdapter
+from lp_lookup.config import COMPANY_LOOKUP_PATH, LP_DATABASE_PATH
 from lp_lookup.matching import InvestorMatcher
 from lp_lookup.service import LookupService
 
@@ -46,7 +47,7 @@ def _write_workbooks(tmp_path: Path) -> tuple[Path, Path]:
     ws_company = company_wb.active
     ws_company.title = "Company-Fund Map"
     ws_company.append(["Company", "Lead Investors"])
-    ws_company.append(["Anthropic", "Accel, Alpha Wave Ventures, Unknown Capital"])
+    ws_company.append(["Anthropic", "Accel, Alpha Wave Ventures, Eric Schmidt, Unknown Capital"])
     ws_company.append(["World Labs", "Andreessen Horowitz"])
     company_wb.save(company_path)
 
@@ -62,6 +63,7 @@ def test_excel_adapter_splits_investors(tmp_path: Path) -> None:
     assert [row.raw_investor for row in company_rows if row.company == "Anthropic"] == [
         "Accel",
         "Alpha Wave Ventures",
+        "Eric Schmidt",
         "Unknown Capital",
     ]
 
@@ -125,17 +127,28 @@ def test_lookup_service_dedupes_lps_and_tracks_unmatched(tmp_path: Path) -> None
     unmatched_rows = service.get_unmatched_rows("Anthropic")
     assert [row.raw_investor for row in unmatched_rows] == ["Unknown Capital"]
 
+    individual_rows = service.get_individual_rows("Anthropic")
+    assert [row.raw_investor for row in individual_rows] == ["Eric Schmidt"]
+
     summary = service.company_summary("Anthropic")
     assert summary == {
         "matched_investors": 2,
+        "individual_investors": 1,
         "unmatched_investors": 1,
         "deduped_lps": 2,
     }
 
+    individual_df = service.individual_dataframe("Anthropic")
+    assert individual_df.columns.tolist() == ["Raw Investor"]
+    assert individual_df.to_dict("records") == [{"Raw Investor": "Eric Schmidt"}]
+
+    unmatched_df = service.unmatched_dataframe("Anthropic")
+    assert unmatched_df.columns.tolist() == ["Raw Investor"]
+    assert unmatched_df.to_dict("records") == [{"Raw Investor": "Unknown Capital"}]
+
 
 @pytest.mark.skipif(
-    not Path("/Users/pascalsuhrcke/Downloads/Atrea_LP_Database_Export.xlsx").exists()
-    or not Path("/Users/pascalsuhrcke/Downloads/Company Look-Up.xlsx").exists(),
+    not LP_DATABASE_PATH.exists() or not COMPANY_LOOKUP_PATH.exists(),
     reason="Real source workbooks are not available",
 )
 @pytest.mark.parametrize("company", ["Anthropic", "World Labs", "Glean"])

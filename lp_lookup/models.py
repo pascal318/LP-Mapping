@@ -57,6 +57,12 @@ class UnmatchedInvestor:
     best_score: Optional[int]
 
 
+@dataclass(frozen=True)
+class IndividualInvestor:
+    company: str
+    raw_investor: str
+
+
 class SourceAdapter(ABC):
     @abstractmethod
     def load_lp_fund_pairs(self) -> Iterable[LPFundPair]:

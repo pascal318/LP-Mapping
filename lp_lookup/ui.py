@@ -50,13 +50,15 @@ def main() -> None:
     selected_company = st.selectbox("Company", companies, index=0)
     summary = service.company_summary(selected_company)
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     col1.metric("Matched Investors", summary["matched_investors"])
-    col2.metric("Unmatched Investors", summary["unmatched_investors"])
-    col3.metric("Deduped LPs", summary["deduped_lps"])
+    col2.metric("Individual Investors", summary["individual_investors"])
+    col3.metric("Unmatched Entities", summary["unmatched_investors"])
+    col4.metric("Deduped LPs", summary["deduped_lps"])
 
     exposure_df = service.exposure_dataframe(selected_company)
     match_df = service.match_dataframe(selected_company)
+    individual_df = service.individual_dataframe(selected_company)
     unmatched_df = service.unmatched_dataframe(selected_company)
 
     st.subheader("LP Exposure")
@@ -77,8 +79,14 @@ def main() -> None:
     else:
         st.dataframe(match_df, use_container_width=True, hide_index=True)
 
-    st.subheader("Unmatched Investors")
+    st.subheader("Individual Investors")
+    if individual_df.empty:
+        st.info("No individual investors were separated out for this company.")
+    else:
+        st.dataframe(individual_df, use_container_width=True, hide_index=True)
+
+    st.subheader("Unmatched Entities")
     if unmatched_df.empty:
-        st.success("All investors for this company produced a match.")
+        st.success("All non-individual investors for this company produced a match.")
     else:
         st.dataframe(unmatched_df, use_container_width=True, hide_index=True)

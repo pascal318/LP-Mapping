@@ -8,7 +8,17 @@ from typing import Iterable
 import pandas as pd
 
 from .adapters import ExcelSourceAdapter
-from .models import CompanyExposureRow, CompanyInvestor, InvestorMatch, LPFundPair, LPRecord, SourceAdapter, UnmatchedInvestor
+from .investor_classification import is_likely_individual_investor
+from .models import (
+    CompanyExposureRow,
+    CompanyInvestor,
+    IndividualInvestor,
+    InvestorMatch,
+    LPFundPair,
+    LPRecord,
+    SourceAdapter,
+    UnmatchedInvestor,
+)
 from .matching import InvestorMatcher
 
 
@@ -24,6 +34,7 @@ class LookupService:
         self._company_to_investors = self._build_company_investor_index(self.company_investors)
         self.matcher = InvestorMatcher(self._fund_manager_to_pairs.keys())
 
+        self._individuals_by_company: dict[str, list[IndividualInvestor]] = defaultdict(list)
         self._matches_by_company: dict[str, list[InvestorMatch]] = defaultdict(list)
         self._unmatched_by_company: dict[str, list[UnmatchedInvestor]] = defaultdict(list)
         self._exposures_by_company: dict[str, list[CompanyExposureRow]] = defaultdict(list)
@@ -80,6 +91,13 @@ class LookupService:
                             )
                             state["matched_investors"].add(match.matched_fund_manager)
                             state["best_score"] = max(int(state["best_score"]), match.match_score)
+                elif is_likely_individual_investor(investor.raw_investor):
+                    self._individuals_by_company[company].append(
+                        IndividualInvestor(
+                            company=company,
+                            raw_investor=investor.raw_investor,
+                        )
+                    )
                 else:
                     self._unmatched_by_company[company].append(
                         UnmatchedInvestor(
@@ -105,6 +123,7 @@ class LookupService:
             self._matches_by_company[company].sort(
                 key=lambda item: (item.raw_investor.lower(), -item.match_score, item.matched_fund_manager.lower())
             )
+            self._individuals_by_company[company].sort(key=lambda item: item.raw_investor.lower())
             self._unmatched_by_company[company].sort(key=lambda item: item.raw_investor.lower())
 
     @property
@@ -116,9 +135,11 @@ class LookupService:
 
     def company_summary(self, company: str) -> dict[str, int]:
         matched_investors = {match.raw_investor for match in self._matches_by_company.get(company, [])}
+        individual_investors = {item.raw_investor for item in self._individuals_by_company.get(company, [])}
         unmatched_investors = {item.raw_investor for item in self._unmatched_by_company.get(company, [])}
         return {
             "matched_investors": len(matched_investors),
+            "individual_investors": len(individual_investors),
             "unmatched_investors": len(unmatched_investors),
             "deduped_lps": len(self._exposures_by_company.get(company, [])),
         }
@@ -128,6 +149,9 @@ class LookupService:
 
     def get_match_rows(self, company: str) -> list[InvestorMatch]:
         return list(self._matches_by_company.get(company, []))
+
+    def get_individual_rows(self, company: str) -> list[IndividualInvestor]:
+        return list(self._individuals_by_company.get(company, []))
 
     def get_unmatched_rows(self, company: str) -> list[UnmatchedInvestor]:
         return list(self._unmatched_by_company.get(company, []))
@@ -158,12 +182,19 @@ class LookupService:
         ]
         return pd.DataFrame(rows)
 
+    def individual_dataframe(self, company: str) -> pd.DataFrame:
+        rows = [
+            {
+                "Raw Investor": row.raw_investor,
+            }
+            for row in self.get_individual_rows(company)
+        ]
+        return pd.DataFrame(rows)
+
     def unmatched_dataframe(self, company: str) -> pd.DataFrame:
         rows = [
             {
                 "Raw Investor": row.raw_investor,
-                "Best Candidate": row.best_candidate or "",
-                "Best Score": row.best_score if row.best_score is not None else "",
             }
             for row in self.get_unmatched_rows(company)
         ]
